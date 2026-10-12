@@ -56,6 +56,7 @@ class Comparison:
     book_updated_at: datetime | None
     event_id: str
     commence_time: datetime
+    book_market: str            # Odds API market key, e.g. "h2h" (to re-pull just that)
 
 
 @dataclass
@@ -266,6 +267,7 @@ def _both_sides(market: KalshiMarket, line: FairLine, main_yes: float,
             book_updated_at=line.book_updated_at,
             event_id=line.event_id,
             commence_time=line.commence_time,
+            book_market=line.market,
         ))
     return out
 

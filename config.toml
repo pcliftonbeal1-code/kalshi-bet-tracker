@@ -1,8 +1,8 @@
 # Bot settings. Safe to commit: NO secrets go in this file (those live in .env).
 
 [alerts]
-# Alert when (fair probability - Kalshi price) is at least this much.
-# 0.03 means 3 percentage points.
+# Alert when the edge AFTER Kalshi's fee (fair probability - price - fee) is at
+# least this much. 0.03 means 3 percentage points.
 min_edge = 0.03
 # Re-alert on the same market only if the edge grew by at least this much.
 realert_edge_increase = 0.01
@@ -57,8 +57,24 @@ min_fallback_books = 2
 game_markets = ["h2h"]
 event_markets = ["player_pass_yds", "player_rush_yds", "team_totals"]
 # How old cached sportsbook odds may get before a full refresh (minutes).
-full_refresh_minutes = 60
+# Old odds only FIND possible edges; nothing alerts until that game's odds are
+# re-pulled fresh (confirm_max_age_minutes). So this can be long and cheap.
+# Moneylines every 120 min = 12 credits/day if the bot runs all day.
+full_refresh_minutes = 120
 # Before alerting, re-pull that one game's odds if our copy is older than this.
 confirm_max_age_minutes = 5
 # Stop spending credits when the remaining monthly quota drops below this.
 min_credits_reserve = 25
+
+[loop]
+# Minutes between checks. Reading Kalshi is free; sportsbook odds are cached.
+poll_minutes = 5
+# Props and team totals cost credits PER GAME, per market, per refresh.
+# Off by default so the free plan (500 credits/month) lasts. Turn on when you
+# have a paid plan, or only on game days.
+props = false
+# With props on, only fetch them for games starting within this many hours.
+props_hours_before_kickoff = 6
+# Re-pull one game's odds to confirm an alert at most this often. Stops one
+# stubborn fake edge from costing a credit every 5 minutes.
+confirm_cooldown_minutes = 30
