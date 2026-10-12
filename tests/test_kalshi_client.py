@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from kalshi_bot.kalshi_client import KalshiClient, KalshiError, parse_market
+from kalshi_bot.kalshi_client import KalshiClient, KalshiError, buyable_depth, parse_market
 
 SAMPLE_MONEYLINE = {
     "ticker": "KXNFLGAME-26OCT18KCBUF-KC",
@@ -151,3 +151,42 @@ def test_client_only_uses_get():
     # Safety check: the client must not have any method that writes to Kalshi.
     for forbidden in ("post", "put", "delete", "patch", "create_order", "place_order"):
         assert not hasattr(KalshiClient, forbidden)
+
+
+# ---------- order book depth ----------
+
+# Current format. Kalshi lists BIDS only, sorted low to high.
+# NO bids at 0.52 (300), 0.54 (200), 0.55 (100) are YES offers at
+# 0.48 (300), 0.46 (200), 0.45 (100).
+BOOK_FP = {"orderbook_fp": {
+    "yes_dollars": [["0.4000", "500.00"], ["0.4300", "250.00"]],
+    "no_dollars": [["0.5200", "300.00"], ["0.5400", "200.00"], ["0.5500", "100.00"]],
+}}
+
+
+def test_depth_to_buy_yes_under_limit():
+    d = buyable_depth(BOOK_FP, "yes", max_price=0.46)
+    # Takes 100 @ 0.45 and 200 @ 0.46 = 300 contracts, cost 45 + 92 = $137
+    assert d.contracts == 300
+    assert d.cost_dollars == 137.00
+    assert d.worst_price == 0.46
+
+
+def test_depth_to_buy_no_from_yes_bids():
+    # YES bids 0.43 (250), 0.40 (500) -> NO offers at 0.57 (250), 0.60 (500)
+    d = buyable_depth(BOOK_FP, "no", max_price=0.58)
+    assert d.contracts == 250
+    assert d.cost_dollars == 142.50
+
+
+def test_depth_old_cents_format():
+    old = {"orderbook": {"yes": [[40, 10]], "no": [[55, 20]]}}
+    d = buyable_depth(old, "yes", max_price=0.45)
+    assert d.contracts == 20
+    assert d.cost_dollars == 9.00
+
+
+def test_depth_empty_book():
+    d = buyable_depth({"orderbook_fp": {"yes_dollars": None, "no_dollars": None}}, "yes", 0.9)
+    assert d.contracts == 0
+    assert d.worst_price is None

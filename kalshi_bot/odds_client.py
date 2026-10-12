@@ -42,6 +42,7 @@ class BookOutcome:
     point: float | None       # the line (277.5); None for h2h
     price: int                # American odds
     fetched_at: datetime      # when WE downloaded it, to judge staleness
+    book_updated_at: datetime | None = None  # when the BOOK last changed this price
 
 
 def _parse_time(value: str) -> datetime:
@@ -54,6 +55,9 @@ def parse_event(event: dict, fetched_at: datetime) -> list[BookOutcome]:
     rows = []
     for book in event.get("bookmakers", []):
         for market in book.get("markets", []):
+            # Our download can be fresh while the book's price is old (e.g. a
+            # delayed feed). The API reports when the book last updated it.
+            updated = market.get("last_update") or book.get("last_update")
             for o in market.get("outcomes", []):
                 rows.append(BookOutcome(
                     event_id=event["id"],
@@ -67,6 +71,7 @@ def parse_event(event: dict, fetched_at: datetime) -> list[BookOutcome]:
                     point=o.get("point"),
                     price=int(o["price"]),
                     fetched_at=fetched_at,
+                    book_updated_at=_parse_time(updated) if updated else None,
                 ))
     return rows
 

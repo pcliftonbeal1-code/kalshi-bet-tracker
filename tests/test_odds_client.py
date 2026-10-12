@@ -173,3 +173,43 @@ def test_missing_api_key_gives_clear_error(monkeypatch):
     monkeypatch.delenv("ODDS_API_KEY", raising=False)
     with pytest.raises(OddsApiError, match="ODDS_API_KEY"):
         OddsClient.from_config()
+
+
+# ---------- Pinnacle cross-check ----------
+
+def _h2h_book(key, kc_price, buf_price, updated="2026-10-18T14:50:00Z"):
+    return {"key": key, "last_update": updated, "markets": [{"key": "h2h", "outcomes": [
+        {"name": "Kansas City Chiefs", "price": kc_price},
+        {"name": "Buffalo Bills", "price": buf_price},
+    ]}]}
+
+
+CROSS_CHECK_EVENT = {
+    "id": "evt2", "commence_time": "2026-10-18T17:00:00Z",
+    "home_team": "Buffalo Bills", "away_team": "Kansas City Chiefs",
+    "bookmakers": [
+        _h2h_book("pinnacle", 124, -148, updated="2026-10-18T13:00:00Z"),  # 42.8% KC
+        _h2h_book("draftkings", 100, -100),   # 50% KC
+        _h2h_book("fanduel", 100, -100),      # 50% KC
+    ],
+}
+
+
+def test_us_books_become_second_opinion_when_pinnacle_present():
+    from kalshi_bot.fair_value import conservative_fair
+    (ml,) = build_fair_lines(parse_event(CROSS_CHECK_EVENT, NOW), SHARP, FALLBACK)
+    assert ml.source == "pinnacle"
+    assert ml.check_source == "avg(draftkings,fanduel)"
+    assert ml.check_fair["Kansas City Chiefs"] == pytest.approx(0.50)
+    # KC: Pinnacle says 42.8%, US books say 50% -> conservative takes 42.8%.
+    assert conservative_fair(ml, "Kansas City Chiefs") == pytest.approx(0.428, abs=0.001)
+    # Buffalo: Pinnacle 57.2%, US 50% -> conservative takes 50%.
+    assert conservative_fair(ml, "Buffalo Bills") == pytest.approx(0.50)
+    assert "draftkings" in ml.book_odds
+
+
+def test_book_update_time_recorded():
+    (ml,) = build_fair_lines(parse_event(CROSS_CHECK_EVENT, NOW), SHARP, FALLBACK)
+    # Pinnacle last changed its price at 13:00 even though we downloaded at 15:00.
+    assert ml.book_updated_at.hour == 13
+    assert ml.fetched_at.hour == 15

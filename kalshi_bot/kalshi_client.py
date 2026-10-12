@@ -88,6 +88,11 @@ class KalshiClient(HttpClient):
                 results[kind] = []
         return results
 
+    def fetch_orderbook(self, ticker: str) -> dict:
+        """Raw order book for one market. Called only for alert candidates,
+        not for every market every cycle, to keep request counts low."""
+        return self.get(f"/markets/{ticker}/orderbook")
+
     def list_series(self, category: str = "Sports") -> list[dict]:
         """List series in a category. Used once, by hand, to find NFL tickers."""
         return self.get("/series", {"category": category}).get("series", [])
@@ -144,6 +149,53 @@ def parse_market(raw: dict, series_ticker: str = "") -> KalshiMarket:
         close_time=_parse_time(raw.get("close_time")),
         volume=int(float(raw.get("volume_fp") or raw.get("volume") or 0)),
     )
+
+
+# ---------- order book depth (liquidity) ----------
+
+@dataclass
+class Depth:
+    """How much you could actually buy at or below a price limit."""
+
+    contracts: float      # number of contracts available
+    cost_dollars: float   # total cost to buy all of them
+    worst_price: float | None  # the highest price you'd pay along the way
+
+
+def _bid_levels(raw: dict, side: str) -> list[tuple[float, float]]:
+    """Read one side's bids as [(price, quantity), ...].
+
+    Current format:  {"orderbook_fp": {"yes_dollars": [["0.4200", "150.00"], ...]}}
+    Older format:    {"orderbook":    {"yes": [[42, 150], ...]}}  (cents)
+    """
+    fp = (raw.get("orderbook_fp") or {}).get(f"{side}_dollars")
+    if fp:
+        return [(float(p), float(q)) for p, q in fp]
+    old = (raw.get("orderbook") or {}).get(side)
+    if old:
+        return [(p / 100, float(q)) for p, q in old]
+    return []
+
+
+def buyable_depth(raw_orderbook: dict, side: str, max_price: float) -> Depth:
+    """Contracts you could BUY on `side` ("yes" or "no") paying at most max_price.
+
+    Kalshi's book only lists bids. Buying YES means matching someone's NO bid:
+    a NO bid at 0.55 is a YES offer at 1 - 0.55 = 0.45. So we flip the
+    opposite side's bids into offers, sort cheapest first, and add up every
+    level at or under our limit.
+    """
+    opposite = "no" if side == "yes" else "yes"
+    offers = sorted((round(1 - p, 4), q) for p, q in _bid_levels(raw_orderbook, opposite))
+    contracts = cost = 0.0
+    worst = None
+    for price, qty in offers:
+        if price > max_price + 1e-9:
+            break
+        contracts += qty
+        cost += price * qty
+        worst = price
+    return Depth(contracts=contracts, cost_dollars=round(cost, 2), worst_price=worst)
 
 
 # ---------- run this file directly to see live data ----------

@@ -30,12 +30,24 @@ class FairLine:
     source: str                 # "pinnacle" or "avg(draftkings,fanduel)"
     book_odds: str              # the raw prices used, for the CSV log
     fetched_at: datetime        # oldest download time among the prices used
+    book_updated_at: datetime | None = None  # oldest "book last changed it" time
+    # When Pinnacle is the source AND enough US books also have this exact
+    # line, their average goes here as a second opinion. A delayed Pinnacle
+    # feed then can't trigger an alert on its own (see conservative_fair).
+    check_fair: dict[str, float] | None = None
+    check_source: str = ""
 
 
 def _devig_one_book(pair: list[BookOutcome]) -> dict[str, float]:
     fair_a, fair_b = remove_vig(american_to_implied(pair[0].price),
                                 american_to_implied(pair[1].price))
     return {pair[0].name: fair_a, pair[1].name: fair_b}
+
+
+def _average_fair(pairs: list[list[BookOutcome]]) -> dict[str, float]:
+    """De-vig each book separately, then average each side across books."""
+    per_book = [_devig_one_book(p) for p in pairs]
+    return {n: sum(fb[n] for fb in per_book) / len(per_book) for n in per_book[0]}
 
 
 def _describe(pair: list[BookOutcome]) -> str:
@@ -62,18 +74,20 @@ def build_fair_lines(outcomes: list[BookOutcome], sharp_book: str,
     # Step 3: pick the source for each line and compute fair probabilities.
     lines = []
     for (event_id, market, subject, point), books in by_line.items():
+        us_books = [books[b] for b in fallback_books if b in books]
+        us_source = f"avg({','.join(p[0].bookmaker for p in us_books)})"
+        has_us_consensus = len(us_books) >= min_fallback_books
+
         if sharp_book in books:
             used = [books[sharp_book]]
             source = sharp_book
+            check_fair = _average_fair(us_books) if has_us_consensus else None
+        elif has_us_consensus:
+            used, source, check_fair = us_books, us_source, None
         else:
-            used = [books[b] for b in fallback_books if b in books]
-            if len(used) < min_fallback_books:
-                continue  # not enough books agree on this exact line; skip it
-            source = f"avg({','.join(p[0].bookmaker for p in used)})"
+            continue  # not enough books agree on this exact line; skip it
 
-        per_book = [_devig_one_book(p) for p in used]
-        names = list(per_book[0])
-        fair = {n: sum(fb[n] for fb in per_book) / len(per_book) for n in names}
+        fair = _average_fair(used)
 
         first = used[0][0]
         lines.append(FairLine(
@@ -86,7 +100,23 @@ def build_fair_lines(outcomes: list[BookOutcome], sharp_book: str,
             point=point,
             fair=fair,
             source=source,
-            book_odds="; ".join(_describe(p) for p in used),
+            book_odds="; ".join(_describe(p) for p in (used + us_books if check_fair else used)),
             fetched_at=min(o.fetched_at for p in used for o in p),
+            book_updated_at=min((o.book_updated_at for p in used for o in p
+                                 if o.book_updated_at), default=None),
+            check_fair=check_fair,
+            check_source=us_source if check_fair else "",
         ))
     return lines
+
+
+def conservative_fair(line: FairLine, side: str) -> float:
+    """The LOWER of the main fair % and the second opinion, for one side.
+
+    Using the lower number means an alert only fires if the edge exists by
+    BOTH Pinnacle's and the US books' estimates. Fewer alerts, fewer false ones.
+    """
+    main = line.fair[side]
+    if line.check_fair and side in line.check_fair:
+        return min(main, line.check_fair[side])
+    return main
