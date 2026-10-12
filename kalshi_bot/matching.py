@@ -176,7 +176,8 @@ def _team_for_total(market: KalshiMarket, game: list[FairLine]) -> str | None:
 # ---------- step 3: what's fair? ----------
 
 def compare_market(kind: str, market: KalshiMarket, lines: list[FairLine],
-                   std_devs: dict, fee_rate: float) -> list[Comparison] | Unmatched:
+                   std_devs: dict, fee_rate: float,
+                   max_gap_sd: float = 0.5) -> list[Comparison] | Unmatched:
     """Compare one Kalshi market to the books. Returns YES/NO comparisons."""
     book_market = KIND_TO_BOOK_MARKET.get(kind)
     if not book_market:
@@ -220,6 +221,18 @@ def compare_market(kind: str, market: KalshiMarket, lines: list[FairLine],
     line = min(candidates, key=lambda ln: abs(ln.point - (threshold - 0.5)))
     sd = std_devs[kind]
     exact = line.point == threshold - 0.5
+    # The bell curve is only a rough guess, and it gets worse the further we
+    # stretch it. Real NFL stats are lopsided: a receiver with a 1.5-yard rushing
+    # line almost never gets 15+, but a 30-yard bell curve says 33%. Live data
+    # showed these produce big FAKE edges, so we refuse to estimate them.
+    if not exact:
+        gap = abs((threshold - 0.5) - line.point)
+        if line.point < sd:
+            return Unmatched(market.ticker, f"book line {line.point} is smaller than the "
+                                            f"std dev ({sd}); bell-curve estimate unreliable")
+        if gap > max_gap_sd * sd:
+            return Unmatched(market.ticker, f"threshold {threshold}+ is {gap:g} from the book "
+                                            f"line {line.point}; too far to estimate safely")
 
     def yes_prob(fair: dict[str, float]) -> float:
         return prob_at_least(threshold, line.point, fair["Over"], sd)
@@ -273,8 +286,8 @@ def _both_sides(market: KalshiMarket, line: FairLine, main_yes: float,
 
 
 def match_all(kalshi: dict[str, list[KalshiMarket]], lines: list[FairLine],
-              std_devs: dict, fee_rate: float, now: datetime | None = None
-              ) -> tuple[list[Comparison], list[Unmatched]]:
+              std_devs: dict, fee_rate: float, now: datetime | None = None,
+              max_gap_sd: float = 0.5) -> tuple[list[Comparison], list[Unmatched]]:
     """Run compare_market over every Kalshi market.
 
     Games that have already kicked off are skipped: Kalshi prices move live
@@ -286,7 +299,7 @@ def match_all(kalshi: dict[str, list[KalshiMarket]], lines: list[FairLine],
     comparisons, unmatched = [], []
     for kind, markets in kalshi.items():
         for m in markets:
-            result = compare_market(kind, m, upcoming, std_devs, fee_rate)
+            result = compare_market(kind, m, upcoming, std_devs, fee_rate, max_gap_sd)
             if isinstance(result, Unmatched):
                 unmatched.append(result)
             else:
@@ -322,7 +335,8 @@ def main() -> None:
     lines = build_fair_lines(outcomes, odds_cfg["sharp_book"], odds_cfg["fallback_books"],
                              odds_cfg["min_fallback_books"])
 
-    comps, unmatched = match_all(kalshi, lines, cfg["std_devs"], cfg["fees"]["taker_fee_rate"])
+    comps, unmatched = match_all(kalshi, lines, cfg["std_devs"], cfg["fees"]["taker_fee_rate"],
+                                 max_gap_sd=cfg["std_devs"].get("max_gap_sd", 0.5))
     comps.sort(key=lambda c: c.edge_after_fees, reverse=True)
     print(f"{'market':<50} {'side':<4} {'kalshi':>6} {'fair':>6} {'edge':>6} {'net':>6}  method")
     for c in comps[:40]:

@@ -21,6 +21,10 @@ taker_fee_rate = 0.07
 qb_pass_yds = 70
 rb_rush_yds = 30
 team_points = 10
+# Only estimate when Kalshi's number is within this many std devs of the book
+# line (0.5 * 30 = 15 rushing yards). Further out, the bell curve produced fake
+# edges on live data (Oct 12, Bills @ Rams), so those markets are skipped.
+max_gap_sd = 0.5
 
 [kalshi]
 # Public market-data endpoints. No login is needed to READ prices.

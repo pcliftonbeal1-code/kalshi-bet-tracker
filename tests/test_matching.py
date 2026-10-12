@@ -190,3 +190,29 @@ def test_started_games_are_skipped():
     by_key, unmatched = run(now=AFTER_KICKOFF)
     assert by_key == {}
     assert len(unmatched) == 5
+
+
+def test_refuses_unreliable_bell_curve_estimates():
+    # Real case, Oct 12 2026: Puka Nacua (a receiver) had a 1.5-yard rushing line.
+    # A 30-yard bell curve called "15+" 33% while Kalshi said 13c: a fake +19% edge.
+    event = dict(BOOK_EVENT, bookmakers=[
+        _two_sided("pinnacle", "player_rush_yds", "Puka Nacua", 1.5, -105, -115),
+        _two_sided("pinnacle", "player_rush_yds", "James Cook", 75.5, -110, -110),
+    ])
+    lines = build_fair_lines(parse_event(event, BEFORE_KICKOFF), "pinnacle", ["draftkings"])
+
+    def rush(ticker, title, threshold):
+        return km(ticker=ticker, event_ticker="KXNFLRSHYDS-26OCT18KCBUF", title=title,
+                  floor_strike=threshold - 0.5, strike_type="greater",
+                  yes_bid_dollars="0.1200", yes_ask_dollars="0.1300")
+
+    markets = {"rb_rush_yds": [
+        rush("KXNFLRSHYDS-26OCT18KCBUF-NACUA-15", "Puka Nacua: 15+ rushing yards", 15),
+        rush("KXNFLRSHYDS-26OCT18KCBUF-COOK-120", "James Cook: 120+ rushing yards", 120),
+        rush("KXNFLRSHYDS-26OCT18KCBUF-COOK-80", "James Cook: 80+ rushing yards", 80),
+    ]}
+    comps, unmatched = match_all(markets, lines, STD_DEVS, FEE, now=BEFORE_KICKOFF)
+    reasons = {u.kalshi_ticker.split("-")[-1]: u.reason for u in unmatched}
+    assert "smaller than the std dev" in reasons["15"]       # tiny line: refuse
+    assert "too far to estimate" in reasons["120"]            # 44.5 yds > 0.5 * 30: refuse
+    assert {c.kalshi_ticker for c in comps} == {"KXNFLRSHYDS-26OCT18KCBUF-COOK-80"}  # 4.5 yds: ok

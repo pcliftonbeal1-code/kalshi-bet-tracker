@@ -109,7 +109,8 @@ def run_cycle(kalshi, odds, cache: OddsCache, tracker: AlertTracker, cfg: dict,
     markets = kalshi.fetch_all_nfl(cfg["kalshi"]["series"])
 
     def candidates():
-        comps, _ = match_all(markets, _lines(cache, odds_cfg), std_devs, fee_rate, now=now)
+        comps, _ = match_all(markets, _lines(cache, odds_cfg), std_devs, fee_rate, now=now,
+                             max_gap_sd=std_devs.get("max_gap_sd", 0.5))
         return [c for c in comps if tracker.is_candidate(c)]
 
     # Step 3: confirm stale candidates with one fresh pull per game.
