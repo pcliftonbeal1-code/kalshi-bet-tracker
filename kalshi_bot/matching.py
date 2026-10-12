@@ -156,7 +156,11 @@ def kalshi_threshold(market: KalshiMarket) -> int | None:
 def _team_for_total(market: KalshiMarket, game: list[FairLine]) -> str | None:
     """For a team-total market, which team is it about?"""
     teams = {ln.subject for ln in game if ln.market == "team_totals"}
-    for code in market.ticker.upper().split("-")[2:]:   # e.g. "...-KC-27"
+    # Live tickers glue the code to the number ("...-SEA8", "...-LAR43"), so strip
+    # trailing digits. The ticker is the reliable source: Kalshi's titles mix
+    # styles ("Seattle", "LA Rams", "BUF Bills").
+    for part in market.ticker.upper().split("-")[2:]:
+        code = part.rstrip("0123456789")
         if TEAM_CODES.get(code) in teams:
             return TEAM_CODES[code]
     text = _normalize(f"{market.title} {market.yes_sub_title}")

@@ -32,14 +32,12 @@ timeout_seconds = 15
 
 [kalshi.series]
 # Kalshi groups markets into "series". These tickers tell the bot where to look.
-# KXNFLGAME and KXNFLPASSYDS are confirmed from Kalshi's public URLs.
-# The others are BEST GUESSES - confirm by running:
-#     python -m kalshi_bot.kalshi_client --discover
-# and replace them with whatever NFL series tickers it prints.
+# All four confirmed live with `python -m kalshi_bot.kalshi_client --discover`
+# (Oct 2026). Re-run it if Kalshi ever renames a series.
 moneyline = "KXNFLGAME"
 qb_pass_yds = "KXNFLPASSYDS"
-rb_rush_yds = "KXNFLRSHYDS"      # UNVERIFIED
-team_points = "KXNFLTEAMTOTAL"   # UNVERIFIED
+rb_rush_yds = "KXNFLRSHYDS"
+team_points = "KXNFLTEAMTOTAL"
 
 [odds_api]
 # The Odds API (the-odds-api.com). Your key goes in .env as ODDS_API_KEY.

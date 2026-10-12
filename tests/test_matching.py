@@ -160,6 +160,25 @@ def test_team_total_line_adjusted():
     assert c.book_line == "Kansas City Chiefs Over 24.5"
 
 
+def test_team_total_live_ticker_format():
+    # Real Kalshi format, checked live: code glued to the number ("-BUF28"), and
+    # a title that names neither the city nor the full team name.
+    live = km(ticker="KXNFLTEAMTOTAL-26OCT18KCBUF-BUF28",
+              event_ticker="KXNFLTEAMTOTAL-26OCT18KCBUF",
+              title="Over 27.5 points scored", floor_strike=27.5, strike_type="greater",
+              yes_bid_dollars="0.3500", yes_ask_dollars="0.3700")
+    event = dict(BOOK_EVENT, bookmakers=BOOK_EVENT["bookmakers"] + [
+        _two_sided("draftkings", "team_totals", "Buffalo Bills", 26.5, -110, -110),
+        _two_sided("fanduel", "team_totals", "Buffalo Bills", 26.5, -110, -110),
+    ])
+    lines = build_fair_lines(parse_event(event, BEFORE_KICKOFF),
+                             "pinnacle", ["draftkings", "fanduel", "betmgm"])
+    comps, unmatched = match_all({"team_points": [live]}, lines, STD_DEVS, FEE,
+                                 now=BEFORE_KICKOFF)
+    assert unmatched == []
+    assert comps[0].book_line == "Buffalo Bills Over 26.5"
+
+
 def test_unmatched_has_reason():
     _, unmatched = run()
     (u,) = unmatched
