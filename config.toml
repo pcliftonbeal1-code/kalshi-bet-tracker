@@ -21,3 +21,22 @@ taker_fee_rate = 0.07
 qb_pass_yds = 70
 rb_rush_yds = 30
 team_points = 10
+
+[kalshi]
+# Public market-data endpoints. No login is needed to READ prices.
+base_url = "https://api.elections.kalshi.com/trade-api/v2"
+# Kalshi's basic tier allows ~20 read requests/second. We stay well under it.
+requests_per_second = 5
+# Seconds to wait for a response before giving up on that request.
+timeout_seconds = 15
+
+[kalshi.series]
+# Kalshi groups markets into "series". These tickers tell the bot where to look.
+# KXNFLGAME and KXNFLPASSYDS are confirmed from Kalshi's public URLs.
+# The others are BEST GUESSES - confirm by running:
+#     python -m kalshi_bot.kalshi_client --discover
+# and replace them with whatever NFL series tickers it prints.
+moneyline = "KXNFLGAME"
+qb_pass_yds = "KXNFLPASSYDS"
+rb_rush_yds = "KXNFLRSHYDS"      # UNVERIFIED
+team_points = "KXNFLTEAMTOTAL"   # UNVERIFIED
