@@ -3,27 +3,21 @@
 This file only ever sends GET requests (the HTTP verb for "read").
 There is no code here that can place, change, or cancel an order.
 
+The HTTP plumbing (rate limiting, retries) lives in http_client.py.
+
 Libraries used:
-  requests - the standard Python library for talking to websites/APIs.
-  time     - built in; used to pause between requests (rate limiting).
   dataclasses - built in; a quick way to define a "record" with named fields.
 """
 
 import argparse
-import time
 from dataclasses import dataclass
 from datetime import datetime
 
-import requests
-
 from kalshi_bot.config import load_config
-
-# Status codes that mean "try again later" rather than "you did something wrong".
-# 429 = too many requests (rate limited); 5xx = Kalshi's server had a problem.
-RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+from kalshi_bot.http_client import ApiError, HttpClient
 
 
-class KalshiError(Exception):
+class KalshiError(ApiError):
     """Raised when Kalshi can't be reached even after retrying."""
 
 
@@ -51,57 +45,15 @@ class KalshiMarket:
     volume: int
 
 
-class KalshiClient:
-    """Wraps the HTTP details: base URL, timeouts, rate limiting, retries."""
+class KalshiClient(HttpClient):
+    """Kalshi-specific reads. Rate limiting and retries come from HttpClient."""
 
-    def __init__(self, base_url: str, requests_per_second: float = 5,
-                 timeout_seconds: float = 15, max_retries: int = 4,
-                 session: requests.Session | None = None):
-        self.base_url = base_url.rstrip("/")
-        self.min_interval = 1.0 / requests_per_second
-        self.timeout = timeout_seconds
-        self.max_retries = max_retries
-        # A Session reuses the same connection for many requests (faster).
-        self.session = session or requests.Session()
-        self._last_request_at = 0.0
+    error_class = KalshiError
 
     @classmethod
     def from_config(cls) -> "KalshiClient":
         cfg = load_config()["kalshi"]
         return cls(cfg["base_url"], cfg["requests_per_second"], cfg["timeout_seconds"])
-
-    def _wait_for_rate_limit(self) -> None:
-        """Sleep just long enough to keep under requests_per_second."""
-        elapsed = time.monotonic() - self._last_request_at
-        if elapsed < self.min_interval:
-            time.sleep(self.min_interval - elapsed)
-        self._last_request_at = time.monotonic()
-
-    def get(self, path: str, params: dict | None = None) -> dict:
-        """GET a Kalshi endpoint and return the JSON body as a dict.
-
-        Retries with "exponential backoff" (wait 1s, 2s, 4s, 8s) on network
-        errors and retryable status codes. Raises KalshiError if all tries fail.
-        """
-        url = f"{self.base_url}/{path.lstrip('/')}"
-        last_problem = ""
-        for attempt in range(self.max_retries + 1):
-            if attempt > 0:
-                time.sleep(2 ** (attempt - 1))
-            self._wait_for_rate_limit()
-            try:
-                resp = self.session.get(url, params=params, timeout=self.timeout)
-            except requests.RequestException as exc:  # no internet, DNS, timeout...
-                last_problem = f"network error: {exc}"
-                continue
-            if resp.status_code in RETRYABLE_STATUS:
-                last_problem = f"HTTP {resp.status_code}"
-                continue
-            if resp.status_code != 200:
-                # 400/401/404 won't fix themselves by retrying.
-                raise KalshiError(f"GET {url} failed: HTTP {resp.status_code} {resp.text[:200]}")
-            return resp.json()
-        raise KalshiError(f"GET {url} gave up after {self.max_retries + 1} tries ({last_problem})")
 
     def fetch_markets(self, series_ticker: str, status: str = "open") -> list[KalshiMarket]:
         """Every open market in one series, following pagination.

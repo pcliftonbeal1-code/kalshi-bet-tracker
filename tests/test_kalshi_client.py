@@ -98,7 +98,7 @@ def make_client(responses):
     return client, session
 
 
-@patch("kalshi_bot.kalshi_client.time.sleep")  # skip real waiting during tests
+@patch("kalshi_bot.http_client.time.sleep")  # skip real waiting during tests
 def test_pagination_follows_cursor(_sleep):
     client, session = make_client([
         FakeResponse(200, {"markets": [SAMPLE_MONEYLINE], "cursor": "page2"}),
@@ -109,7 +109,7 @@ def test_pagination_follows_cursor(_sleep):
     assert session.calls[1]["cursor"] == "page2"
 
 
-@patch("kalshi_bot.kalshi_client.time.sleep")
+@patch("kalshi_bot.http_client.time.sleep")
 def test_retries_on_rate_limit_then_succeeds(sleep):
     client, _ = make_client([
         FakeResponse(429),
@@ -121,14 +121,14 @@ def test_retries_on_rate_limit_then_succeeds(sleep):
     assert [c.args[0] for c in sleep.call_args_list if c.args[0] >= 1] == [1, 2]
 
 
-@patch("kalshi_bot.kalshi_client.time.sleep")
+@patch("kalshi_bot.http_client.time.sleep")
 def test_gives_up_after_max_retries(_sleep):
     client, _ = make_client([FakeResponse(503)] * 5)
     with pytest.raises(KalshiError):
         client.get("/markets")
 
 
-@patch("kalshi_bot.kalshi_client.time.sleep")
+@patch("kalshi_bot.http_client.time.sleep")
 def test_bad_request_not_retried(_sleep):
     client, session = make_client([FakeResponse(400, {"error": "bad"})])
     with pytest.raises(KalshiError):
@@ -136,7 +136,7 @@ def test_bad_request_not_retried(_sleep):
     assert len(session.calls) == 1
 
 
-@patch("kalshi_bot.kalshi_client.time.sleep")
+@patch("kalshi_bot.http_client.time.sleep")
 def test_one_failing_series_does_not_stop_others(_sleep):
     client, _ = make_client(
         [FakeResponse(404, {})] +

@@ -40,3 +40,27 @@ moneyline = "KXNFLGAME"
 qb_pass_yds = "KXNFLPASSYDS"
 rb_rush_yds = "KXNFLRSHYDS"      # UNVERIFIED
 team_points = "KXNFLTEAMTOTAL"   # UNVERIFIED
+
+[odds_api]
+# The Odds API (the-odds-api.com). Your key goes in .env as ODDS_API_KEY.
+base_url = "https://api.the-odds-api.com/v4"
+sport = "americanfootball_nfl"
+requests_per_second = 1
+timeout_seconds = 15
+# Books to ask for. Listing books (instead of whole regions) keeps costs down:
+# up to 10 books are billed like ONE region. Pinnacle is the sharpest book, so
+# when it's present we use it alone; otherwise we average the US books.
+sharp_book = "pinnacle"
+fallback_books = ["draftkings", "fanduel", "betmgm"]
+# Without Pinnacle, require at least this many US books to agree on a line.
+min_fallback_books = 2
+# Market keys. Game-level ones come from one cheap call for ALL games;
+# per-game ones (props, team totals) cost credits per game.
+game_markets = ["h2h"]
+event_markets = ["player_pass_yds", "player_rush_yds", "team_totals"]
+# How old cached sportsbook odds may get before a full refresh (minutes).
+full_refresh_minutes = 60
+# Before alerting, re-pull that one game's odds if our copy is older than this.
+confirm_max_age_minutes = 5
+# Stop spending credits when the remaining monthly quota drops below this.
+min_credits_reserve = 25

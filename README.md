@@ -3,8 +3,8 @@
 Compares Kalshi NFL prediction-market prices to sportsbook odds and alerts you
 when Kalshi looks mispriced. **It never places trades.** It only reads data.
 
-> Status: built in stages. **Stage 1 (math) and Stage 2 (Kalshi fetcher) are
-> done.** Odds fetcher, matching, and alerts come next.
+> Status: built in stages. **Stages 1-3 (math, Kalshi fetcher, sportsbook odds)
+> are done.** Market matching and alerts come next.
 
 ## Setup
 
@@ -42,16 +42,38 @@ python -m kalshi_bot.kalshi_client --discover
 python -m kalshi_bot.kalshi_client
 ```
 
+## See sportsbook fair odds (Stage 3)
+
+Get a key at [the-odds-api.com](https://the-odds-api.com) and put it in `.env`
+as `ODDS_API_KEY=...`.
+
+```bash
+# Moneylines for all upcoming games (about 1 credit)
+python -m kalshi_bot.odds_client
+
+# Also pull props + team totals for the NEXT game only (a few more credits)
+python -m kalshi_bot.odds_client --props
+```
+
+**Credit budget:** the free plan (500 credits/month) is enough to build and
+test, not to run all season. Props cost credits per game, per market. The bot
+reads your remaining credits after every call and stops paid requests when you
+fall below `min_credits_reserve` in `config.toml`.
+
 ## What each file does
 
 | File | Purpose |
 |---|---|
 | `kalshi_bot/odds_math.py` | Pure math: odds to probability, vig removal, edge, fees, line adjustment |
 | `kalshi_bot/kalshi_client.py` | Reads Kalshi market prices (GET requests only), with rate limiting and retries |
+| `kalshi_bot/http_client.py` | Shared GET-only plumbing: rate limiting, retries, hiding secrets in errors |
+| `kalshi_bot/odds_client.py` | Reads sportsbook odds from The Odds API and tracks your credit budget |
+| `kalshi_bot/fair_value.py` | Turns book prices into fair probabilities (Pinnacle, else average of US books) |
 | `kalshi_bot/config.py` | Reads `config.toml` |
 | `config.toml` | Settings: alert threshold, fee rate, standard-deviation **estimates** |
 | `tests/test_odds_math.py` | Unit tests with hand-checkable examples |
 | `tests/test_kalshi_client.py` | Tests the Kalshi fetcher using fake responses (no internet needed) |
+| `tests/test_odds_client.py` | Tests odds parsing, fair-value averaging, budget guard, key redaction |
 | `.env.example` | Template for your API keys. Copy it to `.env`, which git ignores |
 | `.gitignore` | Tells git never to commit `.env`, logs, or clutter |
 | `requirements.txt` | Libraries to install |
