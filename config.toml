@@ -1,0 +1,23 @@
+# Bot settings. Safe to commit: NO secrets go in this file (those live in .env).
+
+[alerts]
+# Alert when (fair probability - Kalshi price) is at least this much.
+# 0.03 means 3 percentage points.
+min_edge = 0.03
+# Re-alert on the same market only if the edge grew by at least this much.
+realert_edge_increase = 0.01
+
+[fees]
+# Kalshi charges a taker fee of roughly: rate * price * (1 - price) per contract.
+# 0.07 is Kalshi's published general rate as of this writing.
+# VERIFY at https://kalshi.com/fee-schedule - some markets use a different rate.
+taker_fee_rate = 0.07
+
+[std_devs]
+# !!! ESTIMATES, NOT MEASURED VALUES !!!
+# Standard deviation of each stat around its expected value, used only when
+# Kalshi's threshold differs from the sportsbook's line. These are starting
+# guesses; refine them later using your own logged results.
+qb_pass_yds = 70
+rb_rush_yds = 30
+team_points = 10
