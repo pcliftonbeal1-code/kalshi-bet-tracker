@@ -3,8 +3,8 @@
 Compares Kalshi NFL prediction-market prices to sportsbook odds and alerts you
 when Kalshi looks mispriced. **It never places trades.** It only reads data.
 
-> Status: built in stages. **Stages 1-3 (math, Kalshi fetcher, sportsbook odds)
-> are done.** Market matching and alerts come next.
+> Status: built in stages. **Stages 1-4 (math, Kalshi fetcher, sportsbook odds,
+> matching) are done.** Alerts, logging, and the 5-minute loop come next.
 
 ## Setup
 
@@ -60,6 +60,20 @@ test, not to run all season. Props cost credits per game, per market. The bot
 reads your remaining credits after every call and stops paid requests when you
 fall below `min_credits_reserve` in `config.toml`.
 
+## Match Kalshi to the books (Stage 4)
+
+```bash
+# One full read-only pass: prints every comparison, best edge first
+python -m kalshi_bot.matching
+
+# Include props/team totals for the next game, and explain anything unmatched
+python -m kalshi_bot.matching --props --show-unmatched
+```
+
+`--show-unmatched` is your debugging tool. Every Kalshi market that couldn't
+be paired with a sportsbook line is listed with the reason (unknown team code,
+no book line for that player, can't find a threshold...).
+
 ## What each file does
 
 | File | Purpose |
@@ -69,11 +83,14 @@ fall below `min_credits_reserve` in `config.toml`.
 | `kalshi_bot/http_client.py` | Shared GET-only plumbing: rate limiting, retries, hiding secrets in errors |
 | `kalshi_bot/odds_client.py` | Reads sportsbook odds from The Odds API and tracks your credit budget |
 | `kalshi_bot/fair_value.py` | Turns book prices into fair probabilities (Pinnacle, else average of US books) |
+| `kalshi_bot/teams.py` | Kalshi team codes (KC, JAC) to sportsbook names (Kansas City Chiefs) |
+| `kalshi_bot/matching.py` | Pairs each Kalshi market with its book line; computes fair %, edge, net edge |
 | `kalshi_bot/config.py` | Reads `config.toml` |
 | `config.toml` | Settings: alert threshold, fee rate, standard-deviation **estimates** |
 | `tests/test_odds_math.py` | Unit tests with hand-checkable examples |
 | `tests/test_kalshi_client.py` | Tests the Kalshi fetcher using fake responses (no internet needed) |
 | `tests/test_odds_client.py` | Tests odds parsing, fair-value averaging, budget guard, key redaction |
+| `tests/test_matching.py` | Tests game/player/threshold matching and exact vs line-adjusted fair values |
 | `.env.example` | Template for your API keys. Copy it to `.env`, which git ignores |
 | `.gitignore` | Tells git never to commit `.env`, logs, or clutter |
 | `requirements.txt` | Libraries to install |
