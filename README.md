@@ -160,15 +160,18 @@ Every checked combo is logged to `data/combos.csv` for measuring CLV later.
 | `kalshi_bot/matching.py` | Pairs each Kalshi market with its book line; computes fair %, edge, net edge |
 | `kalshi_bot/alerts.py` | Which edges deserve an alert; the CSV log; phone push |
 | `kalshi_bot/bot.py` | The 5-minute loop: cached odds, confirm-before-alert, order book check |
+| `kalshi_bot/distributions.py` | Line adjustment from real game logs, plus its backtest |
+| `kalshi_bot/nfl_distributions.json` | The measured stat shapes and swings (2022-2025) |
 | `kalshi_bot/combo.py` | Combo checker: leg gate, correlated simulation, verdict, stake |
 | `kalshi_bot/correlation.py` | Learns how stats move together from nflverse game logs |
 | `kalshi_bot/nfl_correlations.json` | The learned correlation table (2022-2025 seasons) |
 | `kalshi_bot/config.py` | Reads `config.toml` |
-| `config.toml` | Settings: alert threshold, fee rate, standard-deviation **estimates** |
+| `config.toml` | Settings: alert threshold, fee rate, bankroll, measured stat swings |
 | `tests/test_odds_math.py` | Unit tests with hand-checkable examples |
 | `tests/test_kalshi_client.py` | Tests the Kalshi fetcher using fake responses (no internet needed) |
 | `tests/test_odds_client.py` | Tests odds parsing, fair-value averaging, budget guard, key redaction |
 | `tests/test_bot.py` | Tests alert rules and full bot cycles with fake APIs (credit use, cooldowns, no stale alerts) |
+| `tests/test_distributions.py` | Tests the real-data shapes agree with the book and handle lopsided stats |
 | `tests/test_combo.py` | Tests ticker reading, simulation math, the gate, and correlation learning |
 | `tests/test_matching.py` | Tests game/player/threshold matching and exact vs line-adjusted fair values |
 | `.env.example` | Template for your API keys. Copy it to `.env`, which git ignores |
@@ -182,6 +185,29 @@ A sportsbook's odds imply a probability (`-150` means 60%). Both sides add up
 to more than 100% because the book takes a cut (the "vig"). Dividing each side
 by the total gives a **fair** probability. If Kalshi sells YES for less than
 that fair probability, the difference is the **edge**. When Kalshi asks about a
-different number than the book (for example "250+ yards" against a 277.5 line),
-we estimate using a bell curve whose width comes from `config.toml`. **Those
-widths are guesses** that you should refine with real data.
+different number than the book (for example "70+ rushing yards" against a 59.5
+line), we estimate the gap from **real game logs** (see below), and refuse to
+estimate when the gap is too big or the line too small to trust.
+
+## How accurate is the line adjustment?
+
+`python -m kalshi_bot.distributions --backtest` fits on 2022-2024 and predicts
+the 2025 season, which the model never saw. It compares four methods: the old
+guessed bell curve, a bell curve with measured widths, the real-data shape, and
+the blend of those last two, which the bot uses. Highlights:
+
+| Case | What happened | Old guess | Bot now |
+|---|---|---|---|
+| QB rushes 20+ yds over his typical game | 14.1% | 24.8% | 14.4% |
+| QB rushes 20+ yds under his typical game (still clears it) | 83.2% | 74.4% | 85.9% |
+| Team scores 10+ under its implied total (still clears it) | 87.0% | 83.6% | 87.4% |
+| RB rushes 30 under his typical game (still clears it) | 84.6% | 83.8% | 82.3% |
+
+Overall accuracy (Brier score, lower is better): old guess 0.1809, bot now
+0.1795. The biggest fix is QB rushing: the old ±30-yard guess was nearly double
+the real swing (±17). **Known weakness:** for RB rushing and passing far ABOVE the
+line, the bot runs about 2 points high (e.g. 20.0% vs 17.7% at +30 yards), which
+is one reason estimates further than half a typical swing from the line are skipped.
+
+Rebuild after each season with `python -m kalshi_bot.distributions` and
+`python -m kalshi_bot.correlation`.

@@ -213,6 +213,6 @@ def test_refuses_unreliable_bell_curve_estimates():
     ]}
     comps, unmatched = match_all(markets, lines, STD_DEVS, FEE, now=BEFORE_KICKOFF)
     reasons = {u.kalshi_ticker.split("-")[-1]: u.reason for u in unmatched}
-    assert "smaller than the std dev" in reasons["15"]       # tiny line: refuse
+    assert "under half a typical" in reasons["15"]       # tiny line: refuse
     assert "too far to estimate" in reasons["120"]            # 44.5 yds > 0.5 * 30: refuse
     assert {c.kalshi_ticker for c in comps} == {"KXNFLRSHYDS-26OCT18KCBUF-COOK-80"}  # 4.5 yds: ok

@@ -22,7 +22,6 @@ so the bot never needs to download anything at game time.
 
 import argparse
 import csv
-import io
 import json
 import math
 from collections import defaultdict
@@ -140,23 +139,36 @@ def load_table(path: Path = TABLE_PATH) -> dict:
     return json.loads(path.read_text())
 
 
-def _download_csv(url: str) -> list[dict]:
-    resp = requests.get(url, timeout=120)
-    resp.raise_for_status()
-    return list(csv.DictReader(io.StringIO(resp.text)))
+def load_nflverse(seasons: list[int]) -> tuple[list[dict], list[dict]]:
+    """(weekly player stats, game scores + closing lines) for these seasons.
+    Downloads once into data/nflverse/ (git-ignored), then reads from disk."""
+    from kalshi_bot.alerts import DATA_DIR
+
+    cache = DATA_DIR / "nflverse"
+    cache.mkdir(parents=True, exist_ok=True)
+
+    def get(name: str, url: str) -> list[dict]:
+        path = cache / name
+        if not path.exists():
+            print(f"downloading {name}...")
+            resp = requests.get(url, timeout=120)
+            resp.raise_for_status()
+            path.write_bytes(resp.content)
+        with open(path, newline="") as f:
+            return list(csv.DictReader(f))
+
+    stats = [r for s in seasons
+             for r in get(f"stats_{s}.csv", STATS_URL.format(season=s))]
+    wanted = {str(s) for s in seasons}
+    games = [g for g in get("games.csv", GAMES_URL) if g["season"] in wanted]
+    return stats, games
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build the NFL correlation table.")
     parser.add_argument("--seasons", nargs="+", type=int, default=[2022, 2023, 2024, 2025])
     args = parser.parse_args()
-    stats = []
-    for season in args.seasons:
-        print(f"downloading {season} player stats...")
-        stats += _download_csv(STATS_URL.format(season=season))
-    print("downloading game scores...")
-    seasons = {str(s) for s in args.seasons}
-    games = [g for g in _download_csv(GAMES_URL) if g["season"] in seasons]
+    stats, games = load_nflverse(args.seasons)
     table = build_table(team_games(stats, games))
     table["seasons"] = args.seasons
     TABLE_PATH.write_text(json.dumps(table, indent=1, sort_keys=True))

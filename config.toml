@@ -14,15 +14,16 @@ realert_edge_increase = 0.01
 taker_fee_rate = 0.07
 
 [std_devs]
-# !!! ESTIMATES, NOT MEASURED VALUES !!!
-# Standard deviation of each stat around its expected value, used only when
-# Kalshi's threshold differs from the sportsbook's line. These are starting
-# guesses; refine them later using your own logged results.
-qb_pass_yds = 70
-rb_rush_yds = 30
-team_points = 10
+# How much each stat swings from game to game. MEASURED from 2022-2025 game
+# logs by `python -m kalshi_bot.distributions` (the bot reads the measured
+# values from kalshi_bot/nfl_distributions.json; these are the fallback).
+# Used only when Kalshi's threshold differs from the sportsbook's line.
+qb_pass_yds = 73.6
+qb_rush_yds = 17.1
+rb_rush_yds = 36.0
+team_points = 9.0
 # Only estimate when Kalshi's number is within this many std devs of the book
-# line (0.5 * 30 = 15 rushing yards). Further out, the bell curve produced fake
+# line (0.5 * 36 = 18 rushing yards). Further out, estimates produced fake
 # edges on live data (Oct 12, Bills @ Rams), so those markets are skipped.
 max_gap_sd = 0.5
 

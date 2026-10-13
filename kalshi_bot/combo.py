@@ -330,6 +330,7 @@ def _odds_for_game(code: str, cfg: dict, cache_minutes: float):
 
 def main() -> None:
     from kalshi_bot.config import load_config
+    from kalshi_bot.distributions import Shapes
     from kalshi_bot.fair_value import build_fair_lines
     from kalshi_bot.kalshi_client import KalshiClient
     from kalshi_bot.matching import match_all
@@ -354,7 +355,7 @@ def main() -> None:
     outcomes, credits = _odds_for_game(full_code, cfg, combo_cfg["odds_cache_minutes"])
     lines = build_fair_lines(outcomes, oc["sharp_book"], oc["fallback_books"], oc["min_fallback_books"])
     comps, _ = match_all(kalshi, lines, cfg["std_devs"], cfg["fees"]["taker_fee_rate"],
-                         max_gap_sd=cfg["std_devs"].get("max_gap_sd", 0.5))
+                         max_gap_sd=cfg["std_devs"].get("max_gap_sd", 0.5), shapes=Shapes.load())
     legs = build_legs(kalshi, comps)
     if credits is not None:
         print(f"(fresh sportsbook odds; {credits} credits left)")

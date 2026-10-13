@@ -24,11 +24,27 @@ from datetime import datetime, timedelta, timezone
 
 from kalshi_bot.fair_value import FairLine
 from kalshi_bot.kalshi_client import KalshiMarket
-from kalshi_bot.odds_math import edge, edge_after_fees, prob_at_least
+from kalshi_bot.distributions import blended_prob
+from kalshi_bot.odds_math import edge, edge_after_fees
 from kalshi_bot.teams import TEAM_CODES, split_matchup
 
 # Kalshi series name (the keys in config.toml [kalshi.series]) -> Odds API market key.
 # The same names are used for the std-dev estimates in config.toml [std_devs].
+# Kalshi kind -> stat name used by distributions.py / correlation.py.
+# Rushing becomes "qb_rush" when the player also has a passing line.
+KIND_TO_VAR = {"qb_pass_yds": "pass", "rb_rush_yds": "rb_rush", "team_points": "points"}
+# Stat name -> its key in config.toml [std_devs] (used if the data file is missing).
+VAR_TO_SD_KEY = {"pass": "qb_pass_yds", "qb_rush": "qb_rush_yds",
+                 "rb_rush": "rb_rush_yds", "points": "team_points"}
+
+
+def _std_dev(var: str, std_devs: dict, shapes) -> float:
+    """Measured swing from the data file if loaded, else config.toml."""
+    if shapes is not None and var in shapes.sd:
+        return shapes.sd[var]
+    return std_devs.get(VAR_TO_SD_KEY[var], std_devs["rb_rush_yds"])
+
+
 KIND_TO_BOOK_MARKET = {
     "moneyline": "h2h",
     "qb_pass_yds": "player_pass_yds",
@@ -177,7 +193,7 @@ def _team_for_total(market: KalshiMarket, game: list[FairLine]) -> str | None:
 
 def compare_market(kind: str, market: KalshiMarket, lines: list[FairLine],
                    std_devs: dict, fee_rate: float,
-                   max_gap_sd: float = 0.5) -> list[Comparison] | Unmatched:
+                   max_gap_sd: float = 0.5, shapes=None) -> list[Comparison] | Unmatched:
     """Compare one Kalshi market to the books. Returns YES/NO comparisons."""
     book_market = KIND_TO_BOOK_MARKET.get(kind)
     if not book_market:
@@ -186,6 +202,8 @@ def compare_market(kind: str, market: KalshiMarket, lines: list[FairLine],
     game = find_game_lines(market, lines)
     if isinstance(game, str):
         return Unmatched(market.ticker, game)
+    # Rushing markets include QBs, whose rushing behaves very differently.
+    qbs = {ln.subject for ln in game if ln.market == "player_pass_yds"}
     game = [ln for ln in game if ln.market == book_market]
     if not game:
         return Unmatched(market.ticker, f"sportsbooks have no {book_market} for this game")
@@ -219,27 +237,34 @@ def compare_market(kind: str, market: KalshiMarket, lines: list[FairLine],
     # closest to that, so the bell-curve estimate has the least distance to cover.
     candidates = [ln for ln in game if ln.subject == subject and ln.point is not None]
     line = min(candidates, key=lambda ln: abs(ln.point - (threshold - 0.5)))
-    sd = std_devs[kind]
+    var = KIND_TO_VAR[kind]
+    if var == "rb_rush" and subject in qbs:
+        var = "qb_rush"
+    sd = _std_dev(var, std_devs, shapes)
     exact = line.point == threshold - 0.5
-    # The bell curve is only a rough guess, and it gets worse the further we
-    # stretch it. Real NFL stats are lopsided: a receiver with a 1.5-yard rushing
-    # line almost never gets 15+, but a 30-yard bell curve says 33%. Live data
-    # showed these produce big FAKE edges, so we refuse to estimate them.
+    # Estimates get worse the further we stretch from the book's line. Live data
+    # showed a receiver with a 1.5-yard rushing line priced at 33% for 15+ when
+    # Kalshi said 13c: a FAKE edge. So we refuse tiny lines and long stretches.
     if not exact:
         gap = abs((threshold - 0.5) - line.point)
-        if line.point < sd:
-            return Unmatched(market.ticker, f"book line {line.point} is smaller than the "
-                                            f"std dev ({sd}); bell-curve estimate unreliable")
+        if line.point < 0.5 * sd:
+            return Unmatched(market.ticker, f"book line {line.point} is under half a typical "
+                                            f"game-to-game swing ({sd:g}); estimate unreliable")
         if gap > max_gap_sd * sd:
             return Unmatched(market.ticker, f"threshold {threshold}+ is {gap:g} from the book "
                                             f"line {line.point}; too far to estimate safely")
 
+    method = "exact"
+
     def yes_prob(fair: dict[str, float]) -> float:
-        return prob_at_least(threshold, line.point, fair["Over"], sd)
+        nonlocal method
+        if exact:
+            return fair["Over"]
+        p, method = blended_prob(shapes, var, threshold, line.point, fair["Over"], sd)
+        return p
 
     main_yes = yes_prob(line.fair)
     check_yes = yes_prob(line.check_fair) if line.check_fair else None
-    method = "exact" if exact else f"line-adjusted (sd={sd}, ESTIMATE)"
     label = f"{subject} Over {line.point}"
     return _both_sides(market, line, main_yes, check_yes, method, label, fee_rate)
 
@@ -287,7 +312,7 @@ def _both_sides(market: KalshiMarket, line: FairLine, main_yes: float,
 
 def match_all(kalshi: dict[str, list[KalshiMarket]], lines: list[FairLine],
               std_devs: dict, fee_rate: float, now: datetime | None = None,
-              max_gap_sd: float = 0.5) -> tuple[list[Comparison], list[Unmatched]]:
+              max_gap_sd: float = 0.5, shapes=None) -> tuple[list[Comparison], list[Unmatched]]:
     """Run compare_market over every Kalshi market.
 
     Games that have already kicked off are skipped: Kalshi prices move live
@@ -299,7 +324,7 @@ def match_all(kalshi: dict[str, list[KalshiMarket]], lines: list[FairLine],
     comparisons, unmatched = [], []
     for kind, markets in kalshi.items():
         for m in markets:
-            result = compare_market(kind, m, upcoming, std_devs, fee_rate, max_gap_sd)
+            result = compare_market(kind, m, upcoming, std_devs, fee_rate, max_gap_sd, shapes)
             if isinstance(result, Unmatched):
                 unmatched.append(result)
             else:
@@ -335,8 +360,11 @@ def main() -> None:
     lines = build_fair_lines(outcomes, odds_cfg["sharp_book"], odds_cfg["fallback_books"],
                              odds_cfg["min_fallback_books"])
 
+    from kalshi_bot.distributions import Shapes
+
     comps, unmatched = match_all(kalshi, lines, cfg["std_devs"], cfg["fees"]["taker_fee_rate"],
-                                 max_gap_sd=cfg["std_devs"].get("max_gap_sd", 0.5))
+                                 max_gap_sd=cfg["std_devs"].get("max_gap_sd", 0.5),
+                                 shapes=Shapes.load())
     comps.sort(key=lambda c: c.edge_after_fees, reverse=True)
     print(f"{'market':<50} {'side':<4} {'kalshi':>6} {'fair':>6} {'edge':>6} {'net':>6}  method")
     for c in comps[:40]:

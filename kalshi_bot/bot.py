@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 from kalshi_bot.alerts import (
     DATA_DIR, Alert, AlertTracker, format_alert, log_alert, max_buy_price, send_push,
 )
+from kalshi_bot.distributions import Shapes
 from kalshi_bot.fair_value import FairLine, build_fair_lines
 from kalshi_bot.kalshi_client import KalshiError, buyable_depth
 from kalshi_bot.matching import match_all
@@ -94,7 +95,7 @@ def same_bet(c) -> tuple:
 
 def run_cycle(kalshi, odds, cache: OddsCache, tracker: AlertTracker, cfg: dict,
               now: datetime | None = None, notify=print,
-              log_path=DATA_DIR / "alerts.csv") -> list[Alert]:
+              log_path=DATA_DIR / "alerts.csv", shapes=None) -> list[Alert]:
     """One full check. Returns the alerts it sent."""
     now = now or datetime.now(timezone.utc)
     odds_cfg, loop_cfg = cfg["odds_api"], cfg["loop"]
@@ -110,7 +111,7 @@ def run_cycle(kalshi, odds, cache: OddsCache, tracker: AlertTracker, cfg: dict,
 
     def candidates():
         comps, _ = match_all(markets, _lines(cache, odds_cfg), std_devs, fee_rate, now=now,
-                             max_gap_sd=std_devs.get("max_gap_sd", 0.5))
+                             max_gap_sd=std_devs.get("max_gap_sd", 0.5), shapes=shapes)
         return [c for c in comps if tracker.is_candidate(c)]
 
     # Step 3: confirm stale candidates with one fresh pull per game.
@@ -187,6 +188,7 @@ def main() -> None:
     tracker = AlertTracker(cfg["alerts"]["min_edge"], cfg["alerts"]["realert_edge_increase"],
                            DATA_DIR / "alert_state.json")
     cache = OddsCache()
+    shapes = Shapes.load()   # real-data line adjustment (distributions.py)
     poll = cfg["loop"]["poll_minutes"] * 60
     print(f"Read-only bot started. Checking every {cfg['loop']['poll_minutes']} min. "
           f"Phone push: {'on' if topic else 'off'}. Ctrl+C to stop.")
@@ -194,7 +196,7 @@ def main() -> None:
     while True:
         started = time.monotonic()
         try:
-            alerts = run_cycle(kalshi, odds, cache, tracker, cfg, notify=notify)
+            alerts = run_cycle(kalshi, odds, cache, tracker, cfg, notify=notify, shapes=shapes)
             print(f"[{datetime.now():%H:%M}] check done: {len(alerts)} new alert(s), "
                   f"{odds.credits_remaining} odds credits left")
         except Exception:   # one bad cycle (API hiccup, odd data) shouldn't kill the bot

@@ -137,7 +137,7 @@ def test_bad_std_dev_rejected():
 
 def test_config_loads_std_devs():
     cfg = load_config()
-    assert cfg["std_devs"]["qb_pass_yds"] == 70
-    assert cfg["std_devs"]["rb_rush_yds"] == 30
-    assert cfg["std_devs"]["team_points"] == 10
+    assert 50 < cfg["std_devs"]["qb_pass_yds"] < 100   # measured, see distributions.py
+    assert 20 < cfg["std_devs"]["rb_rush_yds"] < 50
+    assert 5 < cfg["std_devs"]["team_points"] < 15
     assert cfg["alerts"]["min_edge"] == 0.03
