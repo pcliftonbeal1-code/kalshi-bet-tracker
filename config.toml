@@ -82,3 +82,26 @@ props_hours_before_kickoff = 6
 # Re-pull one game's odds to confirm an alert at most this often. Stops one
 # stubborn fake edge from costing a credit every 5 minutes.
 confirm_cooldown_minutes = 30
+
+[combo]
+# Gate: a leg qualifies only if its edge as a single bet, after fees, is at
+# least this much. 0.0 = "Kalshi is cheaper than fair after fees".
+min_leg_edge = 0.0
+# Only call a combo VALUE if expected return after fees is at least this much
+# per $1 (0.10 = 10%). Combo fair prices carry more model error than single
+# legs, so this cushion is deliberately bigger than [alerts] min_edge.
+min_roi = 0.10
+# Simulated games per combo. 50,000 gives about +/-0.1% on a 5% combo.
+simulations = 50000
+# Re-use one game's sportsbook odds for this long, so checking several combos
+# costs credits once (~4 credits per refresh).
+odds_cache_minutes = 30
+# The combo fee uses [fees] taker_fee_rate on the combo price.
+# VERIFY on Kalshi's fee schedule that combos use the same formula.
+
+[bankroll]
+# Your betting bankroll in dollars. 0 = not set (no stake suggestion).
+bankroll = 0
+# Max stake per combo: 0.5% of bankroll. Combos lose most of the time, and
+# losing streaks of 20+ are normal at a 10% hit rate. Keep this at 0.5-1%.
+stake_pct = 0.005

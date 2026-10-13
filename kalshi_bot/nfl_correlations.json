@@ -1,0 +1,38 @@
+{
+ "opp": {
+  "margin|margin": -1.0,
+  "margin|pass": -0.174,
+  "margin|points": -0.712,
+  "margin|qb_rush": 0.007,
+  "margin|rb_rush": -0.379,
+  "pass|pass": 0.143,
+  "pass|points": 0.151,
+  "pass|qb_rush": -0.043,
+  "pass|rb_rush": -0.018,
+  "points|points": -0.024,
+  "points|qb_rush": 0.026,
+  "points|rb_rush": -0.183,
+  "qb_rush|qb_rush": -0.001,
+  "qb_rush|rb_rush": 0.044,
+  "rb_rush|rb_rush": -0.19
+ },
+ "same": {
+  "margin|pass": 0.174,
+  "margin|points": 0.712,
+  "margin|qb_rush": -0.007,
+  "margin|rb_rush": 0.379,
+  "pass|points": 0.422,
+  "pass|qb_rush": -0.074,
+  "pass|rb_rush": -0.093,
+  "points|qb_rush": 0.041,
+  "points|rb_rush": 0.339,
+  "qb_rush|rb_rush": -0.024
+ },
+ "seasons": [
+  2022,
+  2023,
+  2024,
+  2025
+ ],
+ "team_games": 2278
+}

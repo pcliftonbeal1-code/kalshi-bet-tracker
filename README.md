@@ -3,8 +3,8 @@
 Compares Kalshi NFL prediction-market prices to sportsbook odds and alerts you
 when Kalshi looks mispriced. **It never places trades.** It only reads data.
 
-> Status: **Stages 1-5 are done** (math, Kalshi fetcher, sportsbook odds,
-> matching, alert loop). Next: paper-trade for a few weekends and check the
+> Status: **Stages 1-6 are done** (math, Kalshi fetcher, sportsbook odds,
+> matching, alert loop, combo checker). Next: paper-trade for a few weekends and check the
 > logged alerts against closing lines before betting real money.
 
 ## Setup
@@ -112,6 +112,41 @@ bot uses about 12 credits a day plus 1 per confirmed alert. Running it on game
 days only, the free 500/month plan is enough. Props (`props = true` in
 `config.toml`) cost credits per game; turn them on once you have a paid plan.
 
+## Check a combo (Stage 6)
+
+Kalshi quotes each combo on the spot when you build it, so there's no list of
+combo prices to scan. Build the combo in the Kalshi app, note its price, then:
+
+```bash
+# 1. List the game's legs: Kalshi price, fair price, and whether each qualifies
+python -m kalshi_bot.combo SEADEN
+
+# 2. Check your combo: leg numbers + y/n, and Kalshi's quote (0.09 = 9c)
+python -m kalshi_bot.combo SEADEN --legs 7y 13n --quote 0.09
+```
+
+Example verdict (real data, Seahawks @ Broncos):
+
+```
+  [ok  ] #7y YES Denver over 24.5 points scored    Kalshi 28c fair 32.2% net +2.8
+  [ok  ] #13n NO Bo Nix: 175+ passing yards        Kalshi 33c fair 34.6% net +0.1
+Fair combo:   5.87% (legs independent would be 11.17%)
+  FIGHT: #7y and #13n strongly work against each other (-0.42).
+VERDICT: no bet
+```
+
+How it decides:
+1. **Gate:** every leg must be cheaper on Kalshi than its fair price after fees.
+   Most nights few or no legs qualify. No qualifying legs means no combo.
+2. **Correlation:** it simulates 50,000 games where legs move together the way
+   they did in 2,278 real NFL team-games (2022-2025). Rebuild that table with
+   `python -m kalshi_bot.correlation`.
+3. **Verdict:** VALUE only if the expected return after fees beats `min_roi`
+   (10%). Max stake is `stake_pct` (0.5%) of your `bankroll` in `config.toml`.
+
+Each check costs about 4 Odds API credits, then is free for 30 minutes (cached).
+Every checked combo is logged to `data/combos.csv` for measuring CLV later.
+
 ## What each file does
 
 | File | Purpose |
@@ -125,12 +160,16 @@ days only, the free 500/month plan is enough. Props (`props = true` in
 | `kalshi_bot/matching.py` | Pairs each Kalshi market with its book line; computes fair %, edge, net edge |
 | `kalshi_bot/alerts.py` | Which edges deserve an alert; the CSV log; phone push |
 | `kalshi_bot/bot.py` | The 5-minute loop: cached odds, confirm-before-alert, order book check |
+| `kalshi_bot/combo.py` | Combo checker: leg gate, correlated simulation, verdict, stake |
+| `kalshi_bot/correlation.py` | Learns how stats move together from nflverse game logs |
+| `kalshi_bot/nfl_correlations.json` | The learned correlation table (2022-2025 seasons) |
 | `kalshi_bot/config.py` | Reads `config.toml` |
 | `config.toml` | Settings: alert threshold, fee rate, standard-deviation **estimates** |
 | `tests/test_odds_math.py` | Unit tests with hand-checkable examples |
 | `tests/test_kalshi_client.py` | Tests the Kalshi fetcher using fake responses (no internet needed) |
 | `tests/test_odds_client.py` | Tests odds parsing, fair-value averaging, budget guard, key redaction |
 | `tests/test_bot.py` | Tests alert rules and full bot cycles with fake APIs (credit use, cooldowns, no stale alerts) |
+| `tests/test_combo.py` | Tests ticker reading, simulation math, the gate, and correlation learning |
 | `tests/test_matching.py` | Tests game/player/threshold matching and exact vs line-adjusted fair values |
 | `.env.example` | Template for your API keys. Copy it to `.env`, which git ignores |
 | `.gitignore` | Tells git never to commit `.env`, logs, or clutter |
