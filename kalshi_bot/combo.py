@@ -28,7 +28,7 @@ from statistics import NormalDist
 
 from kalshi_bot.alerts import DATA_DIR
 from kalshi_bot.correlation import load_table, pair_key
-from kalshi_bot.kalshi_client import KalshiMarket
+from kalshi_bot.kalshi_client import KalshiError, KalshiMarket
 from kalshi_bot.matching import Comparison, parse_event_ticker
 from kalshi_bot.odds_math import kalshi_fee_per_contract
 from kalshi_bot.teams import TEAM_CODES
@@ -346,7 +346,13 @@ def main() -> None:
     cfg = load_config()
     combo_cfg, oc = cfg["combo"], cfg["odds_api"]
     code = args.game.upper()
-    kalshi = KalshiClient.from_config().fetch_all_nfl(cfg["kalshi"]["series"])
+    # Leg numbers come from the full market list, so a series missing on one
+    # run would shift every number and price the wrong legs. All or nothing.
+    try:
+        kalshi = KalshiClient.from_config().fetch_all_nfl(cfg["kalshi"]["series"], strict=True)
+    except KalshiError as exc:
+        raise SystemExit(f"Kalshi didn't return every market ({exc}). "
+                         "Wait a minute and run it again; leg numbers depend on the full list.")
     kalshi = {k: [m for m in ms if code in m.event_ticker.upper()] for k, ms in kalshi.items()}
     if not any(kalshi.values()):
         raise SystemExit(f"No open Kalshi markets match {code!r}.")

@@ -147,6 +147,15 @@ def test_one_failing_series_does_not_stop_others(_sleep):
     assert len(results["moneyline"]) == 1
 
 
+@patch("kalshi_bot.http_client.time.sleep")
+def test_strict_mode_refuses_partial_data(_sleep):
+    # The combo checker numbers legs from the full list; a missing series
+    # would shift the numbers, so strict mode raises instead of skipping.
+    client, _ = make_client([FakeResponse(404, {})])
+    with pytest.raises(KalshiError):
+        client.fetch_all_nfl({"rb_rush_yds": "BADTICKER"}, strict=True)
+
+
 def test_client_only_uses_get():
     # Safety check: the client must not have any method that writes to Kalshi.
     for forbidden in ("post", "put", "delete", "patch", "create_order", "place_order"):

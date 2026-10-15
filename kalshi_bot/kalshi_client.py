@@ -74,8 +74,10 @@ class KalshiClient(HttpClient):
             if not cursor:
                 return markets
 
-    def fetch_all_nfl(self, series_tickers: dict[str, str]) -> dict[str, list[KalshiMarket]]:
-        """Fetch every configured series. One failing series doesn't stop the rest.
+    def fetch_all_nfl(self, series_tickers: dict[str, str],
+                      strict: bool = False) -> dict[str, list[KalshiMarket]]:
+        """Fetch every configured series. One failing series doesn't stop the rest,
+        unless strict=True, which raises instead (for callers that need ALL of it).
 
         Returns {"moneyline": [...markets], "qb_pass_yds": [...], ...}.
         """
@@ -84,6 +86,8 @@ class KalshiClient(HttpClient):
             try:
                 results[kind] = self.fetch_markets(ticker)
             except KalshiError as exc:
+                if strict:
+                    raise
                 print(f"[kalshi] WARNING: could not fetch {kind} ({ticker}): {exc}")
                 results[kind] = []
         return results
